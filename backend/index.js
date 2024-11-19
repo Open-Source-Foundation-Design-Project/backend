@@ -37,7 +37,48 @@ db.connect((err) => {
     } else {
         console.log('MySQL 데이터베이스에 연결되었습니다.');
     }
+    // 테이블이 존재하지 않을 때 생성
+    const createTableQuery = `
+        CREATE TABLE IF NOT EXISTS users (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            username VARCHAR(255) NOT NULL,
+            email VARCHAR(255) NOT NULL UNIQUE,
+            password VARCHAR(255) NOT NULL
+        )
+    `;
+
+    db.query(createTableQuery, (err, results) => {
+        if (err) {
+            console.error('테이블 생성 실패:', err);
+            return;
+        }
+        console.log('users 테이블이 성공적으로 생성되었습니다.');
+    });
+    // trips 테이블이 존재하지 않을 때 생성
+    const createTripsTableQuery = `
+        CREATE TABLE IF NOT EXISTS trips (
+            tid INT AUTO_INCREMENT PRIMARY KEY,
+            title VARCHAR(255) NOT NULL,
+            destination VARCHAR(255) NOT NULL,
+            start_date DATETIME NOT NULL,
+            end_date DATETIME NOT NULL,
+            travel_plan TEXT,
+            user_id INT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+    `;
+
+    db.query(createTripsTableQuery, (err, results) => {
+        if (err) {
+            console.error('trips 테이블 생성 실패:', err);
+            return;
+        }
+        console.log('trips 테이블이 성공적으로 생성되었습니다.');
+    });
 });
+
+
 
 // 회원가입 API 처리
 app.post('/api/signup', (req, res) => {
@@ -282,4 +323,3 @@ app.get('/trips/:tid', (req, res) => {
 app.listen(port, () => {
     console.log(`서버가 http://localhost:${port} 에서 실행 중입니다.`);
 });
-
