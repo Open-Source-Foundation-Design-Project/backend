@@ -4,14 +4,25 @@ const cors = require('cors');
 const dotenv = require('dotenv');
 const bodyParser = require('body-parser'); // POST 요청의 데이터를 처리하는 middleware
 const session = require('express-session'); // 세션 관리
+const axios = require('axios');
+require('dotenv').config();
 
-dotenv.config();
+const { OpenAI } = require("openai");
+
+const openai = new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY //api key는 .env에 환경변수로 저장
+});
+
 
 const app = express();
 const port = process.env.PORT || 5000;
 
 app.use(bodyParser.urlencoded({ extended: true }));
-app.use(cors());
+// CORS 설정
+app.use(cors({
+    origin: 'http://localhost:3000', // React 앱의 주소
+    credentials: true 
+}));
 app.use(express.json());
 
 // 세션 설정
@@ -37,7 +48,7 @@ db.connect((err) => {
     } else {
         console.log('MySQL 데이터베이스에 연결되었습니다.');
     }
-    // 테이블이 존재하지 않을 때 생성
+    //users 테이블이 존재하지 않을 때 생성
     const createTableQuery = `
         CREATE TABLE IF NOT EXISTS users (
             id INT AUTO_INCREMENT PRIMARY KEY,
@@ -97,7 +108,6 @@ app.post('/api/signup', (req, res) => {
 
 // 로그인 API
 app.post('/users/login', (req, res) => {
-    console.log('로그인 요청:', req.body);
     const { email, password } = req.body;
 
     const query = 'SELECT * FROM users WHERE email = ?';
@@ -115,8 +125,10 @@ app.post('/users/login', (req, res) => {
                 // 로그인 성공: 세션에 사용자 정보 저장
                 req.session.userId = user.id; // 사용자 ID를 세션에 저장
                 req.session.username = user.username; // 사용자 이름을 세션에 저장
-
+                // console.log('세션 사용자 ID:', req.session.userId); // 세션 사용자 ID 로그 추가
+                // console.log('로그인 후 세션:', req.session);
                 return res.status(200).json({ message: '로그인 성공' });
+                
             } else {
                 return res.status(401).json({ message: '이메일 또는 비밀번호가 일치하지 않습니다.' });
             }
@@ -142,13 +154,14 @@ app.post('/users/logout', (req, res) => {
 // 여행 생성 API
 app.post('/trips', (req, res) => {
     const { title, destination, start_date, end_date, travel_plan } = req.body;
-
+    const userId = req.session.userId; // 사용자 ID 가져오기
+    console.log('로그인 후 세션:', req.session);
+    console.log('세션 사용자 ID:', req.session.userId); // 세션 사용자 ID 로그 추가
     // 세션에서 사용자 ID 확인
     if (!req.session.userId) {
         return res.status(401).json({ message: '로그인이 필요합니다.' });
     }
 
-    const userId = req.session.userId; // 사용자 ID 가져오기
 
     // 여행 생성 쿼리
     const query = 'INSERT INTO trips (title, destination, start_date, end_date, travel_plan, user_id) VALUES (?, ?, ?, ?, ?, ?)';
@@ -317,6 +330,77 @@ app.get('/trips/:tid', (req, res) => {
     });
 });
 
+
+// 여행 추천 생성
+app.post('/recommend', async (req, res) => {
+    const { departureDate, arrivalDate, destination, numberOfPeople, selectedGroup, travelIntensity, activities, disabilityType } = req.body;
+
+    const prompt = `
+        "${destination}" 여행을 위한 추천 계획을 작성해 주세요.
+        여행자는 ${numberOfPeople}명이고, "${selectedGroup}" 함께 여행을 떠납니다.
+        여행 기간은 ${departureDate}부터 ${arrivalDate}까지입니다.
+        여행 스타일은 "${travelIntensity}"이고, 선호하는 활동은 "${activities.join(', ')}"입니다.
+        이 여행자는 "${disabilityType}"인입니다.
+        여행자를 위한 교통수단, 숙소, 여행자를 고려한 관광지를 추천해주고 유의사항을 알려주세요.
+    `;
+
+    try {
+        // OpenAI API 호출 
+        const completion = await openai.chat.completions.create({
+            model: "gpt-3.5-turbo",
+            messages: [
+                { role: "system", content: "당신은 여행계획을 추천하는 가이드입니다." },
+                { role: "user", content: prompt }
+            ]
+        });
+
+        const travelPlan = completion.choices[0].message.content; // 생성된 여행 계획
+        console.log("추천 여행 계획:", travelPlan);
+
+        // 여행 계획을 trips 테이블에 저장
+        const query = `
+            INSERT INTO trips (title, destination, start_date, end_date, travel_plan, user_id)
+            VALUES (?, ?, ?, ?, ?, ?)
+        `;
+
+        const title = `${destination} 여행 추천 (${selectedGroup})`;
+        db.query(
+            query,
+            [title, destination, departureDate, arrivalDate, travelPlan, req.session.userId],
+            (err, result) => {
+                if (err) {
+                    console.error('여행 계획 저장 중 오류:', err);
+                    return res.status(500).json({
+                        isSuccess: false,
+                        code: 2000,
+                        message: '여행 계획 저장 중 오류가 발생했습니다.'
+                    });
+                }
+
+                return res.status(201).json({
+                    isSuccess: true,
+                    code: 1000,
+                    message: '추천 여행 계획 생성 및 저장에 성공하였습니다.',
+                    result: {
+                        tripId: result.insertId,
+                        title,
+                        destination,
+                        startDate: departureDate,
+                        endDate: arrivalDate,
+                        travelPlan
+                    }
+                });
+            }
+        );
+    } catch (err) {
+        console.error("추천 여행 API 호출 오류:", err);
+        return res.status(500).json({
+            isSuccess: false,
+            code: 2000,
+            message: '추천 데이터를 가져오는 중 오류가 발생했습니다.'
+        });
+    }
+});
 
 
 // 서버 실행
