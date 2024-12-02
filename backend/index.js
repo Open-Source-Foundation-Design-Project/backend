@@ -10,7 +10,7 @@ require('dotenv').config();
 const { OpenAI } = require("openai");
 
 const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY //api key는 .env에 환경변수로 저장
+    apiKey: process.env.OPENAI_API_KEY // 환경변수에서 API 키를 가져오는 것이 좋습니다.
 });
 
 
@@ -21,7 +21,7 @@ app.use(bodyParser.urlencoded({ extended: true }));
 // CORS 설정
 app.use(cors({
     origin: 'http://localhost:3000', // React 앱의 주소
-    credentials: true 
+    credentials: true // 쿠키와 인증 정보를 포함한 요청 허용
 }));
 app.use(express.json());
 
@@ -125,8 +125,8 @@ app.post('/users/login', (req, res) => {
                 // 로그인 성공: 세션에 사용자 정보 저장
                 req.session.userId = user.id; // 사용자 ID를 세션에 저장
                 req.session.username = user.username; // 사용자 이름을 세션에 저장
-                // console.log('세션 사용자 ID:', req.session.userId); // 세션 사용자 ID 로그 추가
-                // console.log('로그인 후 세션:', req.session);
+                console.log('세션 사용자 ID:', req.session.userId); // 세션 사용자 ID 로그 추가
+                console.log('로그인 후 세션:', req.session);
                 return res.status(200).json({ message: '로그인 성공' });
                 
             } else {
@@ -336,16 +336,26 @@ app.post('/recommend', async (req, res) => {
     const { departureDate, arrivalDate, destination, numberOfPeople, selectedGroup, travelIntensity, activities, disabilityType } = req.body;
 
     const prompt = `
-        "${destination}" 여행을 위한 추천 계획을 작성해 주세요.
-        여행자는 ${numberOfPeople}명이고, "${selectedGroup}" 함께 여행을 떠납니다.
-        여행 기간은 ${departureDate}부터 ${arrivalDate}까지입니다.
-        여행 스타일은 "${travelIntensity}"이고, 선호하는 활동은 "${activities.join(', ')}"입니다.
-        이 여행자는 "${disabilityType}"인입니다.
-        여행자를 위한 교통수단, 숙소, 여행자를 고려한 관광지를 추천해주고 유의사항을 알려주세요.
-    `;
+    "${destination}" 여행을 위한 추천 계획을 작성해 주세요.
+    여행자는 ${numberOfPeople}명이고, "${selectedGroup}"과 함께 여행을 떠납니다.
+    여행 기간은 ${departureDate}부터 ${arrivalDate}까지입니다.
+    여행 스타일은 "${travelIntensity}"이고, 선호하는 활동은 "${activities.join(', ')}"입니다.
+    이 여행자는 "${disabilityType}"입니다.
+    
+    다음 조건을 만족하는 추천을 해주세요:
+    1. "${destination}" 근처에서 "${disabilityType}"인을 위한 편의시설이 잘 갖춰진 숙소 3곳을 추천해 주세요. 각 숙소의 이름, 주소, 연락처를 포함해 주세요.
+    2. "${travelIntensity}" 이라는 여행스타일에 맞게 일정을 계획해주세요.
+    3. "${activities.join(', ')}"이라는 선호활동에 맞는 장소를 몇가지 추천해주세요. "${disabilityType}"인을 위한 접근성이 좋은 곳이어야 합니다.
+    3.  접근성이 좋은 현지 맛집을 몇가지 추천해 주세요. 이 식당들은 다양한 메뉴를 제공하고, 장애인을 위한 접근성이 좋은 곳이어야 합니다. 각 식당의 이름, 주소, 연락처를 포함해 주세요.
+    4. "${disabilityType}"인 여행자를 위한 교통수단(예: 장애인 콜택시, 저상버스 등)을 추천해 주세요.
+    5. 접근성이 좋은 관광지와 명소를 추천해 주세요. 각 관광지의 이름, 주소 및 접근성 관련 정보를 포함해 주세요.
+    6. 여행 중 유의사항과 주의할 점을 알려주세요.
+
+    추가적으로, 추천 일정에 각 일자의 주요 활동과 방문할 장소를 포함해 주시면 좋겠습니다.
+`;
 
     try {
-        // OpenAI API 호출 
+        // OpenAI API 호출 (correct method)
         const completion = await openai.chat.completions.create({
             model: "gpt-3.5-turbo",
             messages: [
@@ -407,3 +417,4 @@ app.post('/recommend', async (req, res) => {
 app.listen(port, () => {
     console.log(`서버가 http://localhost:${port} 에서 실행 중입니다.`);
 });
+
